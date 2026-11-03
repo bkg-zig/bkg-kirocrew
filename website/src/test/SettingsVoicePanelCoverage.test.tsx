@@ -2,8 +2,8 @@
  * Coverage pass over Settings ▸ Voice (`pages/settings/VoicePanel.tsx`).
  *
  * Nothing mounted this panel before, so every branch was unexecuted: the load
- * error + retry arm, the skeleton arm, both provider field sets (Piper and
- * Amazon Polly), the optimistic `voice-config-changed` broadcast, the rollback
+ * error + retry arm, the skeleton arm, all provider field sets (system, Piper,
+ * Amazon Polly and BKG API), the optimistic `voice-config-changed` broadcast, the rollback
  * on a failed save, the engine-compatibility fold when a voice changes, and the
  * live Polly catalogue vs. the offline fallback list.
  *
@@ -90,8 +90,10 @@ interface SeedOpts {
   configFails?: boolean
   /** Never settle the config query, leaving the skeleton on screen. */
   configPending?: boolean
-  /** Reject the Polly catalogue query. */
+  /** Reject the active cloud-provider catalogue query. */
   voicesFail?: boolean
+  /** Return a provider-specific catalogue response. */
+  voicesResponse?: Awaited<ReturnType<typeof api.voiceVoices>>
   /** Reject the save, driving the `onError` rollback arm. */
   saveFails?: boolean
   /** Report a host with no built-in speech engine. */
@@ -109,8 +111,8 @@ function seed(over: Record<string, unknown> = {}, opts: SeedOpts = {}) {
   else load.mockResolvedValue(cfg)
 
   const voices = vi.spyOn(api, 'voiceVoices')
-  if (opts.voicesFail) voices.mockRejectedValue(new Error('no aws cli'))
-  else voices.mockResolvedValue(CATALOGUE)
+  if (opts.voicesFail) voices.mockRejectedValue(new Error('voice catalogue unavailable'))
+  else voices.mockResolvedValue(opts.voicesResponse ?? CATALOGUE)
 
   const systemVoices = vi.spyOn(api, 'voiceSystemVoices')
   if (opts.systemVoicesFail) systemVoices.mockRejectedValue(new Error('probe failed'))
@@ -529,5 +531,48 @@ describe('VoicePanel save failure', () => {
     expect(banner).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
     await waitFor(() => expect(screen.queryByText('Failed to save voice config')).toBeNull())
+  })
+})
+
+
+/* ── BKG API ──────────────────────────────────────────────────────────────── */
+
+describe('VoicePanel BKG API provider', () => {
+  const BKG_CATALOGUE = {
+    voices: [
+      { id: 'de-DE-Neural-A', name: 'Mia', language: 'de-DE', languageCode: 'de-DE' },
+      { id: 'de-DE-Neural-B', name: 'Lena', language: 'de-DE', languageCode: 'de-DE' },
+    ],
+  } as Awaited<ReturnType<typeof api.voiceVoices>>
+
+  it('loads the real BKG voice catalogue without Polly or Piper-only fields', async () => {
+    const { voices, save } = seed(
+      { provider: 'bkg-api', voice: 'de-DE-Neural-B' },
+      { voicesResponse: BKG_CATALOGUE },
+    )
+    await field('Voice from the BKG speech API')
+    await waitFor(() => expect(voices).toHaveBeenCalled())
+    expect(screen.queryByText('AWS Profile (Amazon Polly)')).toBeNull()
+    expect(screen.queryByText('Piper Model')).toBeNull()
+
+    await pick(/^Voice$/, 'Mia (de-DE)')
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ voice: 'de-DE-Neural-A' }))
+  })
+
+  it('shows a BKG-specific catalogue error and retries the BKG request', async () => {
+    const { voices } = seed({ provider: 'bkg-api' }, { voicesFail: true })
+    await field('Voice from the BKG speech API')
+    await screen.findByText('The BKG voice catalogue could not be loaded.')
+
+    const calls = voices.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(voices.mock.calls.length).toBeGreaterThan(calls))
+  })
+
+  it('switches to BKG API through the provider selector', async () => {
+    const { save } = seed()
+    await field('Piper Model')
+    await pick(/^Provider$/, 'BKG API (Neural voice)')
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ provider: 'bkg-api' }))
   })
 })

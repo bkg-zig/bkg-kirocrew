@@ -16351,7 +16351,11 @@
         "voice": "Голос",
         "voice_catalogue_unavailable": "Не удалось загрузить список голосов Polly. В списке показан встроенный резервный набор.",
         "voice_from_the_hosts_built_in_speech_engine": "Голос встроенного речевого движка хоста",
-        "recheck": "Проверить снова"
+        "recheck": "Проверить снова",
+        "bkg_api_tts": "BKG API (нейросетевой голос)",
+        "bkg_api_voice_for_tts": "Голос из речевого API BKG",
+        "bkg_api_speech_rate": "Скорость речи для BKG API",
+        "bkg_voice_catalogue_unavailable": "Не удалось загрузить список голосов BKG."
       },
       "weComPanel": {
         "allow_all_bypass_note": "Режим «разрешить всем» включён: список userid выше не используется. Он сохранён на случай возврата.",

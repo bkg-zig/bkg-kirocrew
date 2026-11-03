@@ -15676,7 +15676,11 @@
         "voice": "语音",
         "voice_catalogue_unavailable": "无法加载 Polly 语音列表。选择器显示的是内置的备用列表。",
         "voice_from_the_hosts_built_in_speech_engine": "来自本机内置语音引擎的语音",
-        "recheck": "重新检出"
+        "recheck": "重新检出",
+        "bkg_api_tts": "BKG API（神经语音）",
+        "bkg_api_voice_for_tts": "来自 BKG 语音 API 的声音",
+        "bkg_api_speech_rate": "BKG API 语音语速",
+        "bkg_voice_catalogue_unavailable": "无法加载 BKG 语音列表。"
       },
       "weComPanel": {
         "allow_all_bypass_note": "已开启全部允许：上方的 userid 列表不再生效。它会保留下来，方便你切换回去。",

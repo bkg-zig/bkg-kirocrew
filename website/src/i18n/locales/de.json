@@ -15901,7 +15901,11 @@
         "voice": "Sprache",
         "voice_catalogue_unavailable": "Die Polly-Stimmenliste konnte nicht geladen werden. Die Auswahl zeigt eine integrierte Ersatzliste.",
         "voice_from_the_hosts_built_in_speech_engine": "Stimme aus der integrierten Sprach-Engine des Hosts",
-        "recheck": "Erneut prüfen"
+        "recheck": "Erneut prüfen",
+        "bkg_api_tts": "BKG API (neuronale Stimme)",
+        "bkg_api_voice_for_tts": "Stimme aus der BKG-Sprach-API",
+        "bkg_api_speech_rate": "Sprechgeschwindigkeit für BKG API",
+        "bkg_voice_catalogue_unavailable": "Die BKG-Stimmenliste konnte nicht geladen werden."
       },
       "weComPanel": {
         "allow_all_bypass_note": "„Alle erlauben“ ist aktiv: Die Liste der userids oben wird übergangen. Die Liste bleibt erhalten, falls du zurückwechselst.",

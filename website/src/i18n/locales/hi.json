@@ -15901,7 +15901,11 @@
         "voice": "वॉइस",
         "voice_catalogue_unavailable": "Polly वॉइस सूची लोड नहीं हो सकी। पिकर में बिल्ट-इन वैकल्पिक सूची दिख रही है।",
         "voice_from_the_hosts_built_in_speech_engine": "होस्ट के अंतर्निहित स्पीच इंजन की आवाज़",
-        "recheck": "फिर से जाँचें"
+        "recheck": "फिर से जाँचें",
+        "bkg_api_tts": "BKG API (न्यूरल आवाज़)",
+        "bkg_api_voice_for_tts": "BKG स्पीच API की आवाज़",
+        "bkg_api_speech_rate": "BKG API के लिए बोलने की गति",
+        "bkg_voice_catalogue_unavailable": "BKG आवाज़ सूची लोड नहीं हो सकी।"
       },
       "weComPanel": {
         "allow_all_bypass_note": "सभी को अनुमति चालू है: ऊपर की userid सूची दरकिनार है। वापस बदलने के लिए यह सुरक्षित रखी गई है।",

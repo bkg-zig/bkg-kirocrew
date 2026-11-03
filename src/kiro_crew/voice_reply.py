@@ -89,7 +89,8 @@ def resolve_polly_cli() -> str | None:
 PROVIDER_POLLY = "polly"
 PROVIDER_PIPER = "piper"
 PROVIDER_SYSTEM = "system"
-VALID_PROVIDERS = frozenset({PROVIDER_POLLY, PROVIDER_PIPER, PROVIDER_SYSTEM})
+PROVIDER_BKG_API = "bkg-api"
+VALID_PROVIDERS = frozenset({PROVIDER_POLLY, PROVIDER_PIPER, PROVIDER_SYSTEM, PROVIDER_BKG_API})
 # The host's built-in speech engine is the default because it is the only
 # provider that needs nothing installed and no account: macOS and Windows both
 # ship one, so auto-speak works on a fresh machine. Piper is the offline
@@ -114,6 +115,145 @@ _SAPI_RATE_MIN = -10
 _SAPI_RATE_MAX = 10
 _SYSTEM_WPM_MIN = 80
 _SYSTEM_WPM_MAX = 500
+
+BKG_API_DEFAULT_BASE_URL = "https://api.eysho.info"
+BKG_API_MAX_AUDIO_BYTES = 64 * 1024 * 1024
+
+
+class BkgApiError(RuntimeError):
+    """Credential-safe error from the BKG TTS API."""
+
+    def __init__(self, status: int, action: str) -> None:
+        self.status = status
+        super().__init__(f"BKG TTS {action} failed (HTTP {status})")
+
+
+def _bkg_api_v1_base() -> str:
+    raw = os.environ.get("BKG_API_BASE_URL", BKG_API_DEFAULT_BASE_URL).strip().rstrip("/")
+    if not raw:
+        raw = BKG_API_DEFAULT_BASE_URL
+    return raw if raw.endswith("/v1") else raw + "/v1"
+
+
+def _read_bkg_api_key_sync() -> str:
+    """Read the BKG API key without persisting it in config or provider state.
+
+    BKG_API_KEY is an explicit process-environment override. The encrypted
+    SecretVault entry BKG_APIKEY is the normal deployment source. The Claude /
+    Anthropic credential is intentionally not reused for the separate TTS API.
+    """
+    value = os.environ.get("BKG_API_KEY", "").strip()
+    if value:
+        return value
+    try:
+        from kiro_crew.config.paths import config_dir
+        from kiro_crew.secrets import SecretVault
+
+        secret = SecretVault(config_dir()).get("BKG_APIKEY")
+        return secret.reveal().strip() if secret is not None else ""
+    except Exception:
+        return ""
+
+
+def _bkg_api_key_configured() -> bool:
+    return bool(_read_bkg_api_key_sync())
+
+
+async def list_bkg_api_voices() -> list[dict[str, str]]:
+    """Fetch the real BKG API voice catalogue; never invent fallback voices."""
+    key = await asyncio.to_thread(_read_bkg_api_key_sync)
+    if not key:
+        raise RuntimeError("BKG_APIKEY is not configured")
+
+    import aiohttp
+
+    timeout = aiohttp.ClientTimeout(total=15, connect=5, sock_read=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(
+            f"{_bkg_api_v1_base()}/voices",
+            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        ) as response:
+            if response.status != 200:
+                raise BkgApiError(response.status, "voice catalogue")
+            try:
+                payload = await response.json()
+            except (ValueError, aiohttp.ContentTypeError) as exc:
+                raise RuntimeError("BKG TTS returned an invalid voice catalogue") from exc
+
+    rows = payload.get("voices") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        raise RuntimeError("BKG TTS voice catalogue has no voices array")
+
+    voices: list[dict[str, str]] = []
+    for row in rows:
+        if isinstance(row, str):
+            voice_id, name, language = row.strip(), row.strip(), ""
+        elif isinstance(row, dict):
+            voice_id = row.get("id") or row.get("voice_id") or row.get("name")
+            if not isinstance(voice_id, str):
+                continue
+            name = row.get("name") if isinstance(row.get("name"), str) else voice_id
+            language = row.get("language") or row.get("language_code") or row.get("locale") or ""
+            language = language if isinstance(language, str) else ""
+            voice_id, name, language = voice_id.strip(), name.strip(), language.strip()
+        else:
+            continue
+        if voice_id:
+            voices.append({"id": voice_id, "name": name or voice_id, "language": language, "languageCode": language})
+    if not voices:
+        raise RuntimeError("BKG TTS returned an empty voice catalogue")
+    return voices
+
+
+async def _synthesize_bkg_api(text: str, *, voice_id: str, rate: str, pitch: str) -> str:
+    """Write the BKG streaming MP3 response to an owned temp file."""
+    key = await asyncio.to_thread(_read_bkg_api_key_sync)
+    if not key:
+        raise RuntimeError("BKG_APIKEY is not configured")
+    import aiohttp
+
+    payload = {
+        "text": text,
+        "voice_id": voice_id or "de-DE-Neural-A",
+        "rate": _validate_rate(rate).rstrip("%"),
+        "pitch": _validate_pitch(pitch),
+        "format": "mp3",
+        "sample_rate": 22050,
+    }
+    timeout = aiohttp.ClientTimeout(total=180, connect=10, sock_read=45)
+    fd, path = tempfile.mkstemp(suffix=".mp3")
+    total = 0
+    try:
+        with os.fdopen(fd, "wb") as audio_file:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{_bkg_api_v1_base()}/synthesize/stream",
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json",
+                        "Accept": "audio/mpeg",
+                    },
+                    json=payload,
+                ) as response:
+                    if response.status != 200:
+                        raise BkgApiError(response.status, "synthesis")
+                    async for chunk in response.content.iter_chunked(8192):
+                        total += len(chunk)
+                        if total > BKG_API_MAX_AUDIO_BYTES:
+                            raise RuntimeError(
+                                f"BKG TTS audio exceeded the {BKG_API_MAX_AUDIO_BYTES} byte response limit"
+                            )
+                        if chunk:
+                            audio_file.write(chunk)
+        if total == 0:
+            raise RuntimeError("BKG TTS returned an empty audio stream")
+        return path
+    except BaseException:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
 
 
 def is_available(
@@ -140,6 +280,8 @@ def is_available(
         return resolve_system_tts() is not None
     if provider == PROVIDER_POLLY:
         return resolve_polly_cli() is not None
+    if provider == PROVIDER_BKG_API:
+        return _bkg_api_key_configured()
     if provider == PROVIDER_PIPER:
         bin_path = _resolve_piper_binary(piper_binary)
         if not bin_path:
@@ -994,6 +1136,11 @@ async def synthesize_speech(
     if url_warns:
         logger.warning("voice_reply: redacted %d suspicious URL(s) before TTS", len(url_warns))
 
+    if provider == PROVIDER_BKG_API:
+        plain = strip_markdown(text).strip()
+        if not plain:
+            return None
+        return await _synthesize_bkg_api(plain, voice_id=voice_id, rate=rate, pitch=pitch)
     if provider == PROVIDER_POLLY:
         ssml = text_to_ssml(text, rate=rate, pitch=pitch, engine=engine)
         if not ssml:

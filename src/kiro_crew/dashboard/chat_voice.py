@@ -30,6 +30,7 @@ from kiro_crew.sandbox import _PYTHON_ENV_PREFIXES, SandboxUnavailableError
 from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 from kiro_crew.slack.handler import _vc
 from kiro_crew.voice_reply import (
+    PROVIDER_BKG_API,
     PROVIDER_PIPER,
     PROVIDER_POLLY,
     PROVIDER_SYSTEM,
@@ -39,6 +40,7 @@ from kiro_crew.voice_reply import (
     VoiceSynthesisError,
     _validate_pitch,
     _validate_rate,
+    list_bkg_api_voices,
     list_system_voices,
     pcm_to_wav,
     resolve_polly_cli,
@@ -419,7 +421,9 @@ async def _synthesize_request(
         # Only explicitly selected Polly may reach the paid sentence stream.
         # The built-in engine retains its provider-aware single-WAV path.
         if _vc.provider != PROVIDER_POLLY:
-            return await _synthesize_nonstreaming(state, text, identity)
+            return await _synthesize_nonstreaming(
+                state, text, identity, voice_id=voice_id, engine=engine, rate=rate, pitch=pitch
+            )
         async for idx, sentence, mp3_bytes in streaming_voice_reply(
             text,
             voice_id=voice_id,
@@ -546,7 +550,14 @@ async def _synthesize_piper_stream(
 
 
 async def _synthesize_nonstreaming(
-    state: DashboardState, text: str, identity: dict[str, str]
+    state: DashboardState,
+    text: str,
+    identity: dict[str, str],
+    *,
+    voice_id: str,
+    engine: str,
+    rate: str,
+    pitch: str,
 ) -> web.Response:
     """Keep the built-in engine's single-file synthesis and failure remedies.
 
@@ -559,7 +570,10 @@ async def _synthesize_nonstreaming(
         audio_path = await synthesize_speech(
             text,
             provider=provider,
-            rate=_vc.default_rate,
+            voice_id=voice_id,
+            engine=engine,
+            rate=rate,
+            pitch=pitch,
             piper_binary=_vc.piper_binary,
             piper_model=_vc.piper_model,
             piper_model_config=_vc.piper_model_config,
@@ -603,6 +617,7 @@ async def _synthesize_nonstreaming(
             )
         audio_bytes = await asyncio.to_thread(_read_audio, audio_path)
         audio_b64 = base64.b64encode(audio_bytes).decode()
+        audio_mime = "audio/mpeg" if provider == PROVIDER_BKG_API else "audio/wav"
         state.broadcast_ws(
             "voice_chunk",
             {
@@ -610,12 +625,12 @@ async def _synthesize_nonstreaming(
                 "index": 0,
                 "sentence": text,
                 "audio": audio_b64,
-                "audioMime": "audio/wav",
+                "audioMime": audio_mime,
             },
         )
         state.broadcast_ws(
             "voice_complete",
-            {**identity, "audio": audio_b64, "chunks": 1, "audioMime": "audio/wav"},
+            {**identity, "audio": audio_b64, "chunks": 1, "audioMime": audio_mime},
         )
         return web.json_response({"ok": True, "chunks": 1, "request_id": identity["request_id"]})
     except SandboxUnavailableError as exc:
@@ -691,8 +706,24 @@ async def api_voice_system_voices(request: web.Request) -> web.Response:
 
 
 async def api_voice_voices(request: web.Request) -> web.Response:
-    """GET /api/voice/voices — list available Polly voices (cached 1h)."""
+    """GET /api/voice/voices — fetch the active provider's real catalogue."""
     global _voices_cache, _voices_cache_ts
+
+    if _vc.provider == PROVIDER_BKG_API:
+        try:
+            voices = await asyncio.wait_for(list_bkg_api_voices(), timeout=15)
+        except asyncio.TimeoutError:
+            return web.json_response(
+                {"error": "BKG voice catalogue request timed out", "code": "voice_catalogue_timeout"},
+                status=504,
+            )
+        except Exception as exc:
+            logger.warning("BKG voice catalogue unavailable (%s)", type(exc).__name__)
+            return web.json_response(
+                {"error": "BKG voice catalogue unavailable", "code": "voice_catalogue_unavailable"},
+                status=502,
+            )
+        return web.json_response({"voices": voices})
 
     now = time.time()
     if _voices_cache is not None and (now - _voices_cache_ts) < _VOICES_CACHE_TTL:

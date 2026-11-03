@@ -9242,7 +9242,12 @@
         "text_to_speech": "Text-to-Speech",
         "us_east_1": "us-east-1",
         "voice": "Voice",
-        "recheck": "Check again"
+        "recheck": "Check again",
+        "bkg_api_tts": "BKG API (Neural voice)",
+        "bkg_api_voice_for_tts": "Voice from the BKG speech API",
+        "bkg_api_speech_rate": "Speaking speed for BKG API speech",
+        "voice_catalogue_unavailable": "The Polly voice catalogue could not be loaded. The picker below is showing an offline fallback list.",
+        "bkg_voice_catalogue_unavailable": "The BKG voice catalogue could not be loaded."
       },
       "webexPanel": {
         "access": "Access",

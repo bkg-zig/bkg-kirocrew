@@ -16,7 +16,7 @@ type VoiceConfig = {
   system_voice: string
 }
 
-const PROVIDER_OPTIONS = ['system', 'piper', 'polly']
+const PROVIDER_OPTIONS = ['system', 'piper', 'polly', 'bkg-api']
 
 // Consent-gate service key for Polly; shared so the gate and the cache
 // invalidation below cannot drift apart.
@@ -35,6 +35,7 @@ const PROVIDER_LABEL_KEY: Record<string, string> = {
   system: 'pages.settings.voicePanel.system_built_in',
   piper: 'pages.settings.voicePanel.piper_local_offline',
   polly: 'pages.settings.voicePanel.amazon_polly_cloud',
+  'bkg-api': 'pages.settings.voicePanel.bkg_api_tts',
 }
 
 /** Sentinel for "let the OS pick", which is what an empty `system_voice` means. */
@@ -90,10 +91,10 @@ export function VoicePanel() {
 
   // ── Text-to-Speech config (server-side) ──
   const voiceQ = useQuery<VoiceConfig>({ queryKey: ['voiceConfig'], queryFn: () => api.voiceConfig() })
-  type PollyVoice = { id: string; name: string; language: string; languageCode: string; gender: string; engines: string[] }
+  type ProviderVoice = { id: string; name: string; language: string; languageCode?: string; gender?: string; engines?: string[] }
   // Only fetch the Polly voice catalogue (aws polly describe-voices) when Polly
   // is the active provider — Piper users have no AWS CLI/credentials.
-  const voicesQ = useQuery<{ voices: PollyVoice[] }>({ queryKey: ['voiceVoices'], queryFn: () => api.voiceVoices(), staleTime: 3600_000, enabled: voiceQ.data?.provider === 'polly' })
+  const voicesQ = useQuery<{ voices: ProviderVoice[] }>({ queryKey: ['voiceVoices'], queryFn: () => api.voiceVoices(), staleTime: 3600_000, enabled: voiceQ.data?.provider === 'polly' || voiceQ.data?.provider === 'bkg-api' })
   type SystemVoice = { id: string; name: string; language: string }
   // Enumerating the host engine's voices costs a subprocess, so it is fetched
   // only while that provider is selected — the same rule the Polly catalogue
@@ -116,6 +117,7 @@ export function VoicePanel() {
   // catalog can localise.
   const voiceCfg = voiceQ.data ?? { enabled: false, provider: 'system', voice: VOICE_OPTIONS_FALLBACK[0].value, engine: 'generative', rate: '100%', autoSpeak: false, aws_profile: '', region: '', piper_binary: '', piper_model: '', piper_model_config: '', piper_length_scale: 1.0, system_voice: '' }
   const isPolly = voiceCfg.provider === 'polly'
+  const isBkgApi = voiceCfg.provider === 'bkg-api'
   const isSystem = voiceCfg.provider === 'system'
   // A host with no built-in engine is a real state the user has to act on
   // (install one, or switch provider), so it is surfaced rather than left to a
@@ -133,7 +135,7 @@ export function VoicePanel() {
     ...(systemVoicesQ.data?.voices ?? []).map(v => `${v.name} (${v.language})`),
   ]
   const voiceOptions = voicesQ.data?.voices
-    ? voicesQ.data.voices.map(v => ({ value: v.id, label: `${v.name} (${v.languageCode} ${v.gender[0]})`, engines: v.engines }))
+    ? voicesQ.data.voices.map(v => ({ value: v.id, label: `${v.name} (${v.languageCode || v.language}${v.gender ? ` ${v.gender[0]}` : ''})`, engines: v.engines ?? ENGINE_OPTIONS }))
     : VOICE_OPTIONS_FALLBACK.map(v => ({ ...v, engines: ENGINE_OPTIONS }))
   const selectedVoiceEngines = voiceOptions.find(v => v.value === voiceCfg.voice)?.engines ?? ENGINE_OPTIONS
 
@@ -233,6 +235,17 @@ export function VoicePanel() {
                   )}
                   <SettingsSelect label={i18nT('pages.settings.voicePanel.voice')} description={i18nT('pages.settings.voicePanel.voice_from_the_hosts_built_in_speech_engine')} value={voiceCfg.system_voice} options={systemVoiceOptions} optionLabels={systemVoiceLabels} onChange={v => setVoice({ system_voice: v })} disabled={voiceDisabled || systemUnavailable || systemVoicesLoading} />
                   <SettingsSelect label={i18nT('pages.settings.voicePanel.speed')} description={i18nT('pages.settings.voicePanel.speech_rate_for_spoken_replies_built_in')} value={voiceCfg.rate} options={SPEED_OPTIONS} onChange={v => setVoice({ rate: v })} disabled={voiceDisabled || systemUnavailable} />
+                </>
+              ) : isBkgApi ? (
+                <>
+                  {voicesQ.isError && (
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <ErrorNotice variant="inline" message={i18nT('pages.settings.voicePanel.bkg_voice_catalogue_unavailable')} />
+                      <Btn danger disabled={voicesQ.isFetching} onClick={() => voicesQ.refetch()}>{i18nT('pages.settings.voicePanel.retry')}</Btn>
+                    </div>
+                  )}
+                  <SettingsSelect label={i18nT('pages.settings.voicePanel.voice')} description={i18nT('pages.settings.voicePanel.bkg_api_voice_for_tts')} value={voiceCfg.voice} options={voiceOptions.map(o => o.value)} optionLabels={voiceOptions.map(o => o.label)} onChange={v => setVoice({ voice: v })} disabled={voiceDisabled || voicesQ.isPending || voicesQ.isError || !voicesQ.data?.voices.length} />
+                  <SettingsSelect label={i18nT('pages.settings.voicePanel.speed')} description={i18nT('pages.settings.voicePanel.bkg_api_speech_rate')} value={voiceCfg.rate} options={SPEED_OPTIONS} onChange={v => setVoice({ rate: v })} disabled={voiceDisabled} />
                 </>
               ) : isPolly ? (
                 <>

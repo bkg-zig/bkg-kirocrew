@@ -15674,9 +15674,13 @@
         "this_host_has_no_built_in_speech_engine_install_es": "このホストには組み込みの音声エンジンがありません。espeak-ng をインストールする (例: sudo apt install espeak-ng) か、別のプロバイダーを選択してください。",
         "us_east_1": "us-east-1",
         "voice": "音声",
-        "voice_catalogue_unavailable": "Polly の音声一覧を読み込めませんでした。ピッカーには内蔵の代替一覧を表示しています。",
+        "voice_catalogue_unavailable": "The Polly voice catalogue could not be loaded. The picker below is showing an offline fallback list.",
         "voice_from_the_hosts_built_in_speech_engine": "ホストの内蔵音声エンジンの音声",
-        "recheck": "再確認"
+        "recheck": "再確認",
+        "bkg_api_tts": "BKG API（ニューラル音声）",
+        "bkg_api_voice_for_tts": "BKG 音声 API の音声",
+        "bkg_api_speech_rate": "BKG API 音声の読み上げ速度",
+        "bkg_voice_catalogue_unavailable": "BKG 音声カタログを読み込めませんでした。"
       },
       "weComPanel": {
         "allow_all_bypass_note": "すべて許可がオンになっています。上記のユーザーIDリストはスキップされます。戻すときのために保持されています。",

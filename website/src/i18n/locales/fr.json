@@ -16126,7 +16126,11 @@
         "voice": "Voix",
         "voice_catalogue_unavailable": "Impossible de charger la liste des voix Polly. Le sélecteur affiche une liste de secours intégrée.",
         "voice_from_the_hosts_built_in_speech_engine": "Voix du moteur vocal intégré de la machine",
-        "recheck": "Vérifier à nouveau"
+        "recheck": "Vérifier à nouveau",
+        "bkg_api_tts": "API BKG (voix neuronale)",
+        "bkg_api_voice_for_tts": "Voix de l’API vocale BKG",
+        "bkg_api_speech_rate": "Vitesse de parole pour l’API BKG",
+        "bkg_voice_catalogue_unavailable": "Le catalogue des voix BKG n’a pas pu être chargé."
       },
       "weComPanel": {
         "allow_all_bypass_note": "L’autorisation générale est activée : la liste de userid ci-dessus est ignorée. Elle est conservée pour ton retour en arrière.",
