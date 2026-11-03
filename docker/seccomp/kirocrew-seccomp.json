@@ -845,7 +845,14 @@
         "mount"
       ],
       "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "_comment": "Allow umount2. The inner sandbox retires its temporary private-window staging bind mount with umount2(MNT_DETACH). The Docker default only allows umount2 when the container itself has CAP_SYS_ADMIN; this service deliberately does not. The needed capability exists only inside the child user namespace.",
+      "names": [
+        "umount2"
+      ],
+      "action": "SCMP_ACT_ALLOW"
     }
   ],
-  "_comment": "Kiro Crew custom seccomp profile \u2014 extends the Docker default by adding unshare(CLONE_NEWUSER/NEWNS), clone(CLONE_NEWUSER), and mount (inside a user namespace). Required for Kiro Crew's inner Linux user-namespace sandbox to work inside Docker containers. Less permissive than --security-opt seccomp=unconfined and far less permissive than --privileged. See docs/docker.md for usage."
+  "_comment": "Kiro Crew custom seccomp profile \u2014 extends the Docker default by adding unconditional ALLOW rules for unshare, clone, mount, and umount2. Required for Kiro Crew's inner Linux user-namespace sandbox to work inside Docker containers. Less permissive than --security-opt seccomp=unconfined and far less permissive than --privileged. See docs/guides/docker.md for usage."
 }
